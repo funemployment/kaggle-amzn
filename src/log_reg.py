@@ -35,6 +35,28 @@ def pair_columns(df):
           df[comb[0]+comb[1]] = df.apply(lambda x: uniquecombtwo(x[comb[0]],x[comb[1]]),axis=1)
      return df.ix[:,n:]
 
+def uniquecombthree(x,y,z):
+     return int('{:06d}{:06d}{:06d}'.format(x,y,z))
+
+def triple_columns(df):
+     n = df.shape[1]
+     for comb in it.combinations(df.columns,3):
+          if('ROLE_TITLE' in comb and 'ROLE_FAMILY' in comb):
+               continue
+          df[comb[0]+comb[1]+comb[2]] = df.apply(lambda x: uniquecombthree(x[comb[0]],x[comb[1]],x[comb[2]]),axis=1)
+     return df.ix[:,n:]
+
+def uniquecombfour(a,b,c,d):
+     return hash(int('{:06d}{:06d}{:06d}{:06d}'.format(a,b,c,d)))
+
+def quad_columns(df):
+     n = df.shape[1]
+     for comb in it.combinations(df.columns,4):
+          if('ROLE_TITLE' in comb and 'ROLE_FAMILY' in comb):
+               continue
+          df[comb[0]+comb[1]+comb[2]+comb[3]] = df.apply(lambda x: uniquecombfour(x[comb[0]],x[comb[1]],x[comb[2]],x[comb[3]]),axis=1)
+     return df.ix[:,n:]
+
 def OneHotEncoder(data, keymap=None):
      """
      OneHotEncoder takes data matrix with categorical columns and
@@ -81,51 +103,90 @@ x_single = np.vstack((train_x, test_x))
 train_x_pairs = pair_columns(train.ix[:,1:])
 test_x_pairs = pair_columns(test.ix[:,1:])
 
+train_x_trips = triple_columns(train.ix[:,1:])
+test_x_trips = triple_columns(test.ix[:,1:])
+
+train_x_quads = quad_columns(train.ix[:,1:])
+test_x_quads = quad_columns(test.ix[:,1:])
+
 cur_best = 0
-thresh_grid = [100,50,40,30,20,10,5]
+pairs = [2]
+trips = [2,3,4]
+quads = [15,17,20]
 
-for pair_thresh in thresh_grid:
-     x_pairs = np.vstack((train_x_pairs, test_x_pairs))
+for quad_thresh in quads:
+     x_quads = np.vstack((train_x_quads,test_x_quads))
 
-     #pair_counter = reduce(add, (Counter(x_pairs[:,i]) for i in range(x_pairs.shape[1])))
      good_cols = []
-     for i in range(x_pairs.shape[1]):
-          i_count = Counter(x_pairs[:,i])
-          if(i_count.most_common(1)[0][1] >= pair_thresh):
+     for i in range(x_quads.shape[1]):
+          i_count = Counter(x_quads[:N,i])
+          if(i_count.most_common(1)[0][1] >= quad_thresh):
                good_cols.append(i)
           def_val = i_count.most_common(len(i_count))[-1][0]
-          for j in range(x_pairs.shape[0]):
-               if(i_count[x_pairs[j,i]]<pair_thresh):
-                    x_pairs[j,i] = def_val
+          for j in range(x_quads.shape[0]):
+               if(i_count[x_quads[j,i]]<quad_thresh):
+                    x_quads[j,i] = def_val
 
-     x_pairs = x_pairs[:,good_cols]
-     x_sp = np.hstack((x_single, x_pairs))
+     x_quads = x_quads[:,good_cols]
 
-     #enc = preprocessing.OneHotEncoder()
-     #enc.fit(x_sp)
-     enc,keymap = OneHotEncoder(x_sp)
+     for trip_thresh in trips:
+          x_trips = np.vstack((train_x_trips, test_x_trips))
 
-     #train_x = enc.transform(train_x)
-     #test_x = enc.transform(test_x)
+          good_cols = []
+          for i in range(x_trips.shape[1]):
+               i_count = Counter(x_trips[:N,i])
+               if(i_count.most_common(1)[0][1] >= trip_thresh):
+                    good_cols.append(i)
+               def_val = i_count.most_common(len(i_count))[-1][0]
+               for j in range(x_trips.shape[0]):
+                    if(i_count[x_trips[j,i]]<trip_thresh):
+                         x_trips[j,i] = def_val
 
-     train_x_enc = enc[:N,:]
-     test_x_enc = enc[N:,:]
+          x_trips = x_trips[:,good_cols]
 
-     # 10-fold cross val
-     param_grid = it.product(['l1','l2'],[0.1,0.3,1,3,10,30,100,300])
-     for params in param_grid:
-          cv = KFold(train_x_enc.shape[0],n_folds=10,shuffle=True,random_state=512)
-          print pair_thresh, params
-          reg = linear_model.LogisticRegression(penalty=params[0],C=params[1],random_state=512)
-          result = run_cv(train_x_enc,train_y,reg,cv)
-          print result
-          if result > cur_best:
-               cur_best = result
-               best_params = params
-               best_thresh = pair_thresh
+          for pair_thresh in pairs:
+               x_pairs = np.vstack((train_x_pairs, test_x_pairs))
+     
 
-#reg.fit(train_x, train_y)
+          #pair_counter = reduce(add, (Counter(x_pairs[:,i]) for i in range(x_pairs.shape[1])))
+               good_cols = []
+               for i in range(x_pairs.shape[1]):
+                    i_count = Counter(x_pairs[:N,i])
+                    if(i_count.most_common(1)[0][1] >= pair_thresh):
+                         good_cols.append(i)
+                    def_val = i_count.most_common(len(i_count))[-1][0]
+                    for j in range(x_pairs.shape[0]):
+                         if(i_count[x_pairs[j,i]]<pair_thresh):
+                              x_pairs[j,i] = def_val
+
+               x_pairs = x_pairs[:,good_cols]
+
+               x_sp = np.hstack((x_single, x_pairs, x_trips, x_quads))
+
+               print "Encoding"
+               enc,keymap = OneHotEncoder(x_sp)
+
+               train_x_enc = enc[:N,:]
+               test_x_enc = enc[N:,:]
+
+          # 10-fold cross val
+               param_grid = it.product(['l2'],[0.1,0.3,1])
+               #param_grid = it.product(['l2'],[0.1])
+               for params in param_grid:
+                    cv = KFold(train_x_enc.shape[0],n_folds=10,shuffle=True,random_state=512)
+                    print quad_thresh, trip_thresh, pair_thresh, params
+                    reg = linear_model.LogisticRegression(penalty=params[0],C=params[1],random_state=512)
+                    result = run_cv(train_x_enc,train_y,reg,cv)
+                    print result
+                    if result > cur_best:
+                         cur_best = result
+                         best_params = params
+                         best_pair = pair_thresh
+                         best_trip = trip_thresh
+                         best_quad = quad_thresh
+
+#reg.fit(train_x_enc, train_y)
 #test_predict = test[['id']]
-#test_predict['ACTION'] = reg.predict_proba(test_x)[:,1]
+#test_predict['ACTION'] = reg.predict_proba(test_x_enc)[:,1]
 
-#test_predict.to_csv(os.path.join(os.getcwd(),'output','LogisticRegression_Predict.csv'),index=False)
+#test_predict.to_csv(os.path.join(os.getcwd(),'output','LogisticRegression_Predict_2_4_10.csv'),index=False)
